@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Jacob Bay - AI Background Remover</title>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600&family=Orbitron:wght@700&display=swap" rel="stylesheet">
+  <style>
+    :root{
+      --bg1:#0f0c29;
+      --bg2:#302b63;
+      --bg3:#24243e;
+      --glass: rgba(255,255,255,0.06);
+      --accent1: #ff0080;
+      --accent2: #ff8c00;
+      --accent3: #40e0d0;
+    }
+
+    html,body{height:100%;margin:0;font-family:'Poppins',sans-serif;background:radial-gradient(circle at bottom, var(--bg1), var(--bg2), var(--bg3));color:#fff;}
+
+    /* STARS */
+    .stars{position:fixed;inset:0;pointer-events:none;z-index:2}
+    .star{position:absolute;width:2px;height:2px;border-radius:50%;background:#fff;opacity:.8;animation:twinkle 3s infinite ease-in-out}
+    @keyframes twinkle{0%,100%{opacity:.25}50%{opacity:1}}
+
+    /* HEADER - transparent so it won't block moon */
+    header{position:fixed;left:0;right:0;top:0;height:72px;display:flex;align-items:center;padding:18px 36px;z-index:10;background:transparent}
+    .brand{font-family:'Orbitron',sans-serif;font-size:28px;letter-spacing:3px;color:#e8ecff;text-shadow:0 0 12px rgba(200,210,255,0.18)}
+
+    /* MOON - crisp crescent with glow, always on top */
+    .moon {
+      position: fixed;
+      top: 28px;
+      right: 36px;
+      width: 140px;
+      height: 140px;
+      z-index: 9999; /* very top */
+      pointer-events: none;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+    }
+
+    /* bright disc */
+    .moon .light {
+      position: absolute;
+      width: 100%;
+      height: 100%;
+      border-radius: 50%;
+      background: radial-gradient(circle at 35% 30%, #ffffff 0%, #f3f4ff 45%, #dfe4ff 70%);
+      box-shadow: 0 0 40px rgba(255,255,255,0.25), 0 0 90px rgba(255,255,255,0.12);
+      transform: translateZ(0);
+    }
+
+    /* the "cut" that makes the crescent - dark circle offset slightly left-up */
+    .moon .cut {
+      position: absolute;
+      width: 86%;
+      height: 86%;
+      border-radius: 50%;
+      background: radial-gradient(circle at 40% 30%, #131327 0%, #1a1e33 60%);
+      left: 18%;
+      top: 6%;
+      box-shadow: -6px 0 18px rgba(0,0,0,0.45) inset;
+      transform: translateZ(0);
+    }
+
+    /* soft halo behind moon for richness (placed lower z than moon) */
+    .moon-halo {
+      position: fixed;
+      top: 18px;
+      right: 20px;
+      width: 220px;
+      height: 220px;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(230,230,255,0.14) 0%, rgba(230,230,255,0.06) 10%, rgba(0,0,0,0) 40%);
+      filter: blur(10px);
+      z-index: 9998;
+      pointer-events:none;
+    }
+
+    /* MAIN CENTERED CONTAINER */
+    .wrap {
+      position:relative;
+      z-index:5;
+      min-height: calc(100vh - 120px);
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      padding:60px 20px;
+      box-sizing:border-box;
+    }
+
+    #container{
+      width:100%;
+      max-width:1000px;
+      background:linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0.02));
+      border-radius:22px;
+      padding:44px;
+      box-shadow: 0 20px 80px rgba(10,10,20,0.6), inset 0 1px 0 rgba(255,255,255,0.02);
+      backdrop-filter: blur(8px);
+      text-align:center;
+    }
+
+    h1{margin:0 0 28px 0;font-size:28px;letter-spacing:0.6px}
+    #drop-zone{
+      border: 2px dashed rgba(255,255,255,0.22);
+      border-radius:14px;
+      padding:34px;
+      color:rgba(255,255,255,0.7);
+      cursor:pointer;
+      transition:all .18s ease;
+      margin:0 auto 18px auto;
+      max-width:860px;
+      background: linear-gradient(180deg, rgba(255,255,255,0.01), rgba(255,255,255,0.0));
+    }
+    #drop-zone:hover{transform:translateY(-2px); border-color: rgba(255,255,255,0.38)}
+
+    input[type=file]{display:none}
+
+    .controls{margin-top:14px}
+    .btn{
+      display:inline-block;padding:12px 26px;border-radius:14px;border:none;background:linear-gradient(90deg,var(--accent1),var(--accent2));color:#fff;font-weight:600;cursor:pointer;box-shadow:0 10px 30px rgba(255,80,140,0.08)
+    }
+
+    /* PROGRESS */
+    #progress-container{width:60%;max-width:420px;margin:18px auto;border-radius:10px;background:rgba(255,255,255,0.04);overflow:hidden;display:none}
+    #progress-bar{height:10px;width:0%;background:linear-gradient(90deg,var(--accent1),var(--accent2),var(--accent3));transition:width .18s ease}
+    #progress-text{color:rgba(255,255,255,0.7);margin-top:10px;font-size:14px}
+
+    /* IMAGES ROW (Original / Result) */
+    .images{display:flex;align-items:flex-start;justify-content:center;gap:48px;margin-top:36px;flex-wrap:wrap}
+    .image-box{width:340px;text-align:center}
+    .image-box h3{margin:0 0 12px 0;color:#f0f0ff}
+    .image-box .frame{
+      background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));
+      padding:16px;border-radius:16px;box-shadow:0 10px 40px rgba(0,0,0,0.5);
+    }
+    .image-box img{display:block;width:100%;height:auto;border-radius:12px;object-fit:cover}
+
+    /* download button */
+    .download-btn{display:none;margin-top:14px;padding:12px 26px;border-radius:14px;background:linear-gradient(90deg,#00d4ff,#a400ff);color:#fff;text-decoration:none;font-weight:600}
+
+    footer{margin-top:28px;color:rgba(255,255,255,0.65);font-size:14px;text-align:center;padding-bottom:12px}
+  </style>
+</head>
+<body>
+  <!-- stars -->
+  <div class="stars" id="stars"></div>
+
+  <!-- halo and moon (halo behind moon, moon on top) -->
+  <div class="moon-halo"></div>
+  <div class="moon" aria-hidden="true">
+    <div class="light"></div>
+    <div class="cut"></div>
+  </div>
+
+  <!-- header (transparent so moon is never blocked) -->
+  <header><div class="brand">JACOB BAY</div></header>
+
+  <!-- main centered area -->
+  <div class="wrap">
+    <main id="container">
+      <h1>✨ AI Background Remover ✨</h1>
+
+      <form id="upload-form" enctype="multipart/form-data">
+        <label id="drop-zone">Drop or click to upload image</label>
+        <input id="file-input" name="image" type="file" accept="image/*" />
+        <div class="controls">
+          <button id="remove-btn" class="btn" type="submit">Remove Background</button>
+        </div>
+      </form>
+
+      <div id="progress-container"><div id="progress-bar"></div></div>
+      <div id="progress-text"></div>
+
+      <div class="images">
+        <div class="image-box">
+          <h3>Original</h3>
+          <div class="frame">
+            <img id="preview" src="" alt="Original preview" />
+          </div>
+        </div>
+
+        <div class="image-box">
+          <h3>Result</h3>
+          <div class="frame">
+            <img id="result" src="" alt="Result preview" style="display:none" />
+          </div>
+          <a id="download-btn" class="download-btn" href="#" download="jacobbay_result.png">⬇️ Download Result</a>
+        </div>
+      </div>
+
+      <footer>Made with ❤️ by <strong>Jacob Sapphire</strong></footer>
+    </main>
+  </div>
+
+  <script>
+    // generate stars
+    const stars = document.getElementById('stars');
+    for (let i=0;i<120;i++){
+      const s = document.createElement('div');
+      s.className='star';
+      const size = (Math.random()*1.6)+0.6;
+      s.style.width = size+'px';
+      s.style.height = size+'px';
+      s.style.top = Math.random()*100 + '%';
+      s.style.left = Math.random()*100 + '%';
+      s.style.animationDelay = (Math.random()*3) + 's';
+      stars.appendChild(s);
+    }
+
+    // elements
+    const dropZone = document.getElementById('drop-zone');
+    const fileInput = document.getElementById('file-input');
+    const preview = document.getElementById('preview');
+    const resultImg = document.getElementById('result');
+    const removeBtn = document.getElementById('remove-btn');
+    const progressContainer = document.getElementById('progress-container');
+    const progressBar = document.getElementById('progress-bar');
+    const progressText = document.getElementById('progress-text');
+    const downloadBtn = document.getElementById('download-btn');
+
+    // open file dialog when clicking the drop zone
+    dropZone.addEventListener('click', ()=> fileInput.click());
+
+    // drag & drop handlers
+    dropZone.addEventListener('dragover', e=>{ e.preventDefault(); dropZone.style.borderColor='rgba(255,255,255,0.5)'; });
+    dropZone.addEventListener('dragleave', e=>{ e.preventDefault(); dropZone.style.borderColor='rgba(255,255,255,0.22)'; });
+    dropZone.addEventListener('drop', e=>{
+      e.preventDefault();
+      const f = e.dataTransfer.files[0];
+      if(f){ fileInput.files = e.dataTransfer.files; handlePreview(f); }
+      dropZone.style.borderColor='rgba(255,255,255,0.22)';
+    });
+
+    fileInput.addEventListener('change', ()=> {
+      const f = fileInput.files[0];
+      if(f) handlePreview(f);
+    });
+
+    function handlePreview(file){
+      preview.src = URL.createObjectURL(file);
+      preview.style.display = 'block';
+    }
+
+    // Submit to /upload and poll /progress (server file uses progress.txt)
+    document.getElementById('upload-form').addEventListener('submit', async (e)=>{
+      e.preventDefault();
+      if(!fileInput.files.length){ alert('Please choose an image first'); return; }
+
+      // reset UI
+      resultImg.style.display='none';
+      downloadBtn.style.display='none';
+      progressBar.style.width='0%';
+      progressContainer.style.display='block';
+      progressText.textContent = 'Uploading... 0%';
+
+      // send
+      const form = new FormData();
+      form.append('image', fileInput.files[0]);
+      const uploadPromise = fetch('/upload', { method:'POST', body: form });
+
+      // poll progress
+      const poller = setInterval(async ()=>{
+        try{
+          const r = await fetch('/progress');
+          const j = await r.json();
+          const p = j.progress || 0;
+          progressBar.style.width = p + '%';
+          progressText.textContent = 'Processing... ' + p + '%';
+          if(p>=100) clearInterval(poller);
+        }catch(err){ /* ignore */ }
+      }, 300);
+
+      // wait upload result blob
+      const res = await uploadPromise;
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+
+      // show result
+      progressBar.style.width = '100%';
+      progressText.textContent = 'Done! 100%';
+      resultImg.src = url;
+      resultImg.style.display='block';
+      downloadBtn.href = url;
+      downloadBtn.style.display='inline-block';
+
+      // hide progress after a moment
+      setTimeout(()=>{ progressContainer.style.display='none'; progressText.textContent=''; }, 1200);
+    });
+  </script>
+</body>
+</html>
